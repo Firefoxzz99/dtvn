@@ -11,3 +11,11 @@ Alat ini dibuat murni untuk tujuan edukasi, lab *cybersecurity*, CTF, dan penguj
    ```bash
    git clone [https://github.com/Firefoxzz99/dtvn.git](https://github.com/Firefoxzz99/dtvn.git)
    cd dtvn
+
+### blue print sementara
+src/dtvn/
+├── __init__.py
+├── cli.py              <-- (Diubah) Menambahkan subcommand 'recon' & argumen 'target'
+└── recon/              <-- (Folder Baru) Paket khusus modul reconnaissance
+    ├── __init__.py     <-- (Baru) Penanda package recon
+    └── target.py       <-- (Baru) Logika validasi IP Address & Hostname
