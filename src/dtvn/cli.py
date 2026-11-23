@@ -3,8 +3,15 @@ import sys
 from dtvn import __version__
 from dtvn.recon.host import check_tcp_reachability, resolve_target
 from dtvn.recon.scanner import parse_ports, scan_ports
-from dtvn.recon.service import ServiceInfo, identify_service, probe_service
+from dtvn.recon.service import identify_service, probe_service
 from dtvn.recon.target import validate_target
+from dtvn.utils.output import (
+    PortFinding,
+    ReconReport,
+    print_error,
+    print_recon_header,
+    render_recon_report,
+)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -38,7 +45,6 @@ def create_parser() -> argparse.ArgumentParser:
         help="Alamat IPv4 (contoh: 127.0.0.1) atau hostname target (contoh: localhost).",
     )
 
-    # Grup mutually exclusive: pengguna memilih single --port ATAU multi --ports
     port_group = recon_parser.add_mutually_exclusive_group()
     port_group.add_argument(
         "-p", "--port",
@@ -69,12 +75,13 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _format_service_output(svc: ServiceInfo) -> str:
-    """Memformat teks identifikasi service secara konsisten."""
-    base = f"{svc.service} ({svc.identification_method})"
-    if svc.banner:
-        return f"{base} -> {svc.banner}"
-    return base
+def _resolve_service(
+    target: str, resolved_ip: str, port: int, timeout: float, use_probe: bool
+):
+    """Memilih metode identifikasi layanan (protocol probe vs port-based guess)."""
+    if use_probe:
+        return probe_service(target, resolved_ip, port, timeout)
+    return identify_service(port)
 
 
 def main() -> None:
@@ -84,7 +91,7 @@ def main() -> None:
 
     if args.command == "recon":
         if args.timeout <= 0:
-            print("[!] Error: Nilai --timeout harus lebih besar dari 0.", file=sys.stderr)
+            print_error("Nilai --timeout harus lebih besar dari 0.")
             sys.exit(1)
 
         try:
@@ -94,76 +101,82 @@ def main() -> None:
             # 2. Validasi input port sebelum melakukan koneksi jaringan
             if args.ports is not None:
                 port_list = parse_ports(args.ports)
+                mode = "multi-port"
             else:
                 if not (1 <= args.port <= 65535):
                     raise ValueError("Nomor --port harus berada di antara 1 hingga 65535.")
-                port_list = None
-
-            print(f"[*] Target          : {target_info.raw_target} ({target_info.target_type.upper()})")
+                port_list = [args.port]
+                mode = "single-port"
 
             # 3. Resolusi DNS ke IPv4 (Phase 2)
             resolved_ip = resolve_target(target_info.raw_target)
-            print(f"[*] Resolved IP     : {resolved_ip}")
 
-            # 4A. Mode Multi-Port Scanner (Phase 3 & Phase 4)
-            if port_list is not None:
-                mode_label = "dengan protocol service probe" if args.service_probe else "port-based mapping"
-                print(
-                    f"[*] Scanning        : {len(port_list)} port(s) secara sekuensial "
-                    f"({mode_label}, timeout: {args.timeout}s)..."
-                )
-                summary = scan_ports(
+            # 4. Tampilkan header sesi recon (Phase 5)
+            print_recon_header(
+                target=target_info.raw_target,
+                target_type=target_info.target_type,
+                resolved_ip=resolved_ip,
+                port_count=len(port_list),
+                service_probe=args.service_probe,
+                timeout=args.timeout,
+            )
+
+            # 5. Jalankan scanning (Phase 2/3) & identifikasi layanan (Phase 4)
+            if mode == "multi-port":
+                scan_summary = scan_ports(
                     target=target_info.raw_target,
                     resolved_ip=resolved_ip,
                     ports=port_list,
                     timeout=args.timeout,
                 )
-                print("-" * 64)
-                for res in summary.results:
-                    if res.state == "OPEN":
-                        svc = (
-                            probe_service(target_info.raw_target, resolved_ip, res.port, args.timeout)
-                            if args.service_probe
-                            else identify_service(res.port)
-                        )
-                        svc_text = _format_service_output(svc)
-                        latency = f" [{res.response_time_ms} ms]" if res.response_time_ms is not None else ""
-                        print(f"  {res.port}/tcp  OPEN    {svc_text}{latency}")
-                    else:
-                        print(f"  {res.port}/tcp  {res.state}")
-                print("-" * 64)
-                print(
-                    f"[+] Ringkasan       : "
-                    f"{len(summary.open_ports)} OPEN | "
-                    f"{len(summary.closed_ports)} CLOSED | "
-                    f"{len(summary.timeout_ports)} TIMEOUT | "
-                    f"{len(summary.error_ports)} ERROR"
-                )
-
-            # 4B. Mode Single-Port Probe (Phase 2 + Phase 4)
+                probe_results = scan_summary.results
             else:
-                print(f"[*] TCP Probe       : {resolved_ip}:{args.port} (timeout: {args.timeout}s)...")
-                probe_result = check_tcp_reachability(
+                single_result = check_tcp_reachability(
                     target=target_info.raw_target,
                     resolved_ip=resolved_ip,
                     port=args.port,
                     timeout=args.timeout,
                 )
+                probe_results = [single_result]
 
-                print(f"[+] Port Status     : {probe_result.state}")
-                print(f"[+] Detail          : {probe_result.detail}")
-                if probe_result.state == "OPEN":
-                    svc = (
-                        probe_service(target_info.raw_target, resolved_ip, args.port, args.timeout)
-                        if args.service_probe
-                        else identify_service(args.port)
+            findings: list[PortFinding] = []
+            for res in probe_results:
+                svc_info = (
+                    _resolve_service(
+                        target=target_info.raw_target,
+                        resolved_ip=resolved_ip,
+                        port=res.port,
+                        timeout=args.timeout,
+                        use_probe=args.service_probe,
                     )
-                    print(f"[+] Service         : {_format_service_output(svc)}")
-                if probe_result.response_time_ms is not None:
-                    print(f"[+] Response Time   : {probe_result.response_time_ms} ms")
+                    if res.state == "OPEN"
+                    else None
+                )
+                findings.append(
+                    PortFinding(
+                        port=res.port,
+                        protocol="tcp",
+                        state=res.state,
+                        detail=res.detail,
+                        response_time_ms=res.response_time_ms,
+                        service_info=svc_info,
+                    )
+                )
+
+            # 6. Susun laporan terstruktur dan render ke terminal (Phase 5)
+            report = ReconReport(
+                target=target_info.raw_target,
+                target_type=target_info.target_type,
+                resolved_ip=resolved_ip,
+                mode=mode,
+                service_probe_enabled=args.service_probe,
+                timeout=args.timeout,
+                findings=findings,
+            )
+            render_recon_report(report)
 
         except (ValueError, ConnectionError) as err:
-            print(f"[!] Error: {err}", file=sys.stderr)
+            print_error(str(err))
             sys.exit(1)
     else:
         parser.print_help()
