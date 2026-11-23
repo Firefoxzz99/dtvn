@@ -90,13 +90,13 @@ dtvn/
 └── README.md
 ```
 
-# Installation
+## Installation
 ## Prerequisites: Python 3.10+ and Git.
 
 * Clone the repository:
 
 ```Bash
-git clone [https://github.com/](https://github.com/)<your-username>/dtvn.git
+git clone [https://github.com/](https://github.com/)Firefoxzz99/dtvn.git
 cd dtvn
 ```
 
@@ -117,7 +117,7 @@ pip install -e .
 ```
 ===
 
-Usage Examples
+## Usage Examples
 1. Check CLI Help & Version
 ```Bash
 dtvn --help
@@ -137,7 +137,7 @@ dtvn recon localhost --ports 5430-5435 --timeout 0.5
 dtvn recon localhost --ports 5430-5435 --service-probe --timeout 0.5 --output results/scan.json
 ```
 
-Semple Terminal output 
+Semple Terminal Output 
 ```plaintext
 ====================================================================
  DTVN v0.1.0 — Network Reconnaissance Report
