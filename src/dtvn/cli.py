@@ -245,6 +245,8 @@ def main() -> None:
                 port_count=len(port_list),
                 service_probe=args.service_probe,
                 timeout=effective_timeout,
+                workers=effective_workers,
+                profile=args.profile,
             )
 
             # ---------------------------------------------------------
@@ -318,6 +320,8 @@ def main() -> None:
                 mode=mode,
                 service_probe_enabled=args.service_probe,
                 timeout=effective_timeout,
+                workers=effective_workers,
+                profile=args.profile,
                 findings=findings,
             )
 

@@ -3,6 +3,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
 from dtvn import __version__
 from dtvn.utils.output import ReconReport
 
@@ -12,6 +13,7 @@ def serialize_recon_report(report: ReconReport) -> dict[str, Any]:
     Mengonversi objek ReconReport menjadi dictionary terstruktur
     yang siap diserialisasi ke format JSON.
     """
+
     raw_data = asdict(report)
 
     return {
@@ -25,8 +27,10 @@ def serialize_recon_report(report: ReconReport) -> dict[str, Any]:
             "target_type": raw_data["target_type"],
             "resolved_ip": raw_data["resolved_ip"],
             "mode": raw_data["mode"],
+            "profile": raw_data["profile"],
             "service_probe_enabled": raw_data["service_probe_enabled"],
             "timeout_seconds": raw_data["timeout"],
+            "workers": raw_data["workers"],
         },
         "summary": {
             "total_ports": len(report.findings),
@@ -44,18 +48,23 @@ def save_report_to_json(report: ReconReport, output_path: str) -> Path:
     Menyimpan ReconReport ke file JSON pada path yang ditentukan.
     Membuat direktori induk secara otomatis jika belum tersedia.
     """
+
     cleaned_path = output_path.strip()
+
     if not cleaned_path:
         raise ValueError("Path file --output tidak boleh kosong.")
 
     target_file = Path(cleaned_path)
-    if target_file.exists() and target_file.is_dir():
-        raise ValueError(f"Path '{cleaned_path}' adalah direktori, bukan nama file JSON.")
 
-    # Buat direktori induk jika belum ada (misal folder 'results/')
+    if target_file.exists() and target_file.is_dir():
+        raise ValueError(
+            f"Path '{cleaned_path}' adalah direktori, bukan nama file JSON."
+        )
+
     target_file.parent.mkdir(parents=True, exist_ok=True)
 
     payload = serialize_recon_report(report)
+
     with target_file.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
