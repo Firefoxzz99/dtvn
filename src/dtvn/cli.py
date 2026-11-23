@@ -4,6 +4,7 @@ from dtvn import __version__
 from dtvn.recon.host import check_tcp_reachability, resolve_target
 from dtvn.recon.scanner import parse_ports, scan_ports
 from dtvn.recon.target import validate_target
+from dtvn.recon.service import identify_service
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -103,6 +104,14 @@ def main() -> None:
                 for res in summary.results:
                     latency = f" ({res.response_time_ms} ms)" if res.response_time_ms is not None else ""
                     print(f"  Port {res.port:<5} : {res.state:<7}{latency}")
+                    if res.state == "OPEN":
+                        service_info = identify_service(res.port)
+
+                        print(
+                            f"{res.port}/tcp OPEN "
+                            f"{service_info.service} "
+                            f"({service_info.identification_method})"
+                        )
                 print("-" * 52)
                 print(
                     f"[+] Ringkasan       : "
