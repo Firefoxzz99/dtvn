@@ -12,6 +12,7 @@ from dtvn.utils.output import (
     print_recon_header,
     render_recon_report,
 )
+from dtvn.utils.report import save_report_to_json
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -34,7 +35,7 @@ def create_parser() -> argparse.ArgumentParser:
         help="Subcommand yang tersedia",
     )
 
-    # Subcommand: dtvn recon <target> [--port 80 | --ports 5430-5435] [--service-probe] [--timeout 2.0]
+    # Subcommand: dtvn recon <target> [--port 80 | --ports 5430-5435] [--service-probe] [--timeout 2.0] [-o results/scan.json]
     recon_parser = subparsers.add_parser(
         "recon",
         help="Jalankan pengintaian jaringan dasar pada target yang diizinkan.",
@@ -70,6 +71,13 @@ def create_parser() -> argparse.ArgumentParser:
         type=float,
         default=2.0,
         help="Batas waktu tunggu koneksi per port dalam detik (default: 2.0).",
+    )
+
+    recon_parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default=None,
+        help="Simpan laporan hasil reconnaissance ke file JSON (contoh: results/scan.json).",
     )
 
     return parser
@@ -175,7 +183,12 @@ def main() -> None:
             )
             render_recon_report(report)
 
-        except (ValueError, ConnectionError) as err:
+            # 7. Ekspor laporan ke JSON jika --output diberikan (Phase 6)
+            if args.output is not None:
+                saved_path = save_report_to_json(report, args.output)
+                print(f"[+] JSON Report     : Tersimpan di '{saved_path}'")
+
+        except (ValueError, ConnectionError, OSError) as err:
             print_error(str(err))
             sys.exit(1)
     else:
