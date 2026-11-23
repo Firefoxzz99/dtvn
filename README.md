@@ -16,23 +16,39 @@ Alat ini dibuat murni untuk tujuan edukasi, lab _cybersecurity_, CTF, dan penguj
 
 ### aktifkan viritual environment
 
-    ```bash
-    python -m venv .venv
-    source .venv/Scripts/activate  # Untuk Windows (Git Bash)
+2. gunakan code ini untuk aktifin viritual environment
+   ```bash
+   python -m venv .venv
+   source .venv/Scripts/activate  # Untuk Windows (Git Bash)
+   ```
 
-#install editable
-pip install -e .
+### install editable
+
+3. code ini untuk install DTVN
+   ```bash
+   pip install -e .
+   ```
 
 # penggunaan
-# Bantuan & versi
-dtvn --help
-dtvn --version
 
-# Pemeriksaan satu port TCP spesifik (Phase 2)
-dtvn recon localhost --port 5432
-dtvn recon 127.0.0.1 --port 80 --timeout 1.5
+4. Bantuan & versi
 
-# Pemindaian rentang atau daftar port TCP secara sekuensial (Phase 3)
-dtvn recon localhost --ports 5430-5435 --timeout 0.5
-dtvn recon 127.0.0.1 --ports 80,443,5432 --timeout 0.5
+   ```bash
+   dtvn --help
+   dtvn --version
 
+   ```
+
+5. Pemeriksaan satu port TCP spesifik (Phase 2)
+
+   ```bash
+   dtvn recon localhost --port 5432
+   dtvn recon 127.0.0.1 --port 80 --timeout 1.5
+
+   ```
+
+6. Pemindaian rentang atau daftar port TCP secara sekuensial (Phase 3)
+   ```bash
+   dtvn recon localhost --ports 5430-5435 --timeout 0.5
+   dtvn recon 127.0.0.1 --ports 80,443,5432 --timeout 0.5
+   ```
