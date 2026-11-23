@@ -19,3 +19,12 @@ src/dtvn/
 └── recon/              <-- (Folder Baru) Paket khusus modul reconnaissance
     ├── __init__.py     <-- (Baru) Penanda package recon
     └── target.py       <-- (Baru) Logika validasi IP Address & Hostname
+
+### blueprint baru untuk phase 2
+src/dtvn/
+├── __init__.py
+├── cli.py              <-- (Diubah) Menambahkan opsi --timeout dan memanggil recon host
+└── recon/
+    ├── __init__.py
+    ├── target.py       <-- (Tetap) Validasi IPv4 & Hostname
+    └── host.py         <-- (Baru) DNS Resolution & TCP Port Reachability Check
