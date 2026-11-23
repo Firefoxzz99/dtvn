@@ -3,6 +3,7 @@ import sys
 
 from dtvn import __version__
 from dtvn.recon.host import check_tcp_reachability, resolve_target
+from dtvn.recon.profile import get_profile
 from dtvn.recon.scanner import (
     parse_ports,
     scan_ports,
@@ -38,20 +39,12 @@ def create_parser() -> argparse.ArgumentParser:
         help="Tampilkan versi program DTVN dan keluar.",
     )
 
-    # Wadah untuk subcommands
     subparsers = parser.add_subparsers(
         dest="command",
         title="commands",
         help="Subcommand yang tersedia",
     )
 
-    # Subcommand:
-    # dtvn recon <target>
-    # [--port 80 | --ports 5430-5435]
-    # [--service-probe]
-    # [--timeout 2.0]
-    # [--workers 10]
-    # [-o results/scan.json]
     recon_parser = subparsers.add_parser(
         "recon",
         help="Jalankan pengintaian jaringan dasar pada target yang diizinkan.",
@@ -63,6 +56,17 @@ def create_parser() -> argparse.ArgumentParser:
         help=(
             "Alamat IPv4 (contoh: 127.0.0.1) "
             "atau hostname target (contoh: localhost)."
+        ),
+    )
+
+    recon_parser.add_argument(
+        "--profile",
+        type=str,
+        default=None,
+        choices=["quick", "standard", "thorough"],
+        help=(
+            "Gunakan preset konfigurasi scanning "
+            "(quick, standard, atau thorough)."
         ),
     )
 
@@ -102,20 +106,22 @@ def create_parser() -> argparse.ArgumentParser:
         "-t",
         "--timeout",
         type=float,
-        default=2.0,
+        default=None,
         help=(
-            "Batas waktu tunggu koneksi per port dalam detik "
-            "(default: 2.0)."
+            "Batas waktu tunggu koneksi per port dalam detik. "
+            "Jika tidak diberikan, gunakan nilai dari profile "
+            "atau default 2.0."
         ),
     )
 
     recon_parser.add_argument(
         "--workers",
         type=int,
-        default=1,
+        default=None,
         help=(
             "Jumlah worker concurrent untuk multi-port scanning. "
-            "Nilai 1 menggunakan scanner sequential (default: 1)."
+            "Jika tidak diberikan, gunakan nilai dari profile "
+            "atau default 1."
         ),
     )
 
@@ -153,26 +159,68 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "recon":
-        if args.timeout <= 0:
-            print_error("Nilai --timeout harus lebih besar dari 0.")
-            sys.exit(1)
-
-        if args.workers < 1:
-            print_error("Nilai --workers harus minimal 1.")
-            sys.exit(1)
-
-        if args.workers > 100:
-            print_error("Nilai --workers tidak boleh lebih dari 100.")
-            sys.exit(1)
-
         try:
-            # 1. Validasi format target (Phase 1)
+            # ---------------------------------------------------------
+            # 1. Ambil konfigurasi profile jika digunakan
+            # ---------------------------------------------------------
+            profile = get_profile(args.profile) if args.profile else None
+
+            # ---------------------------------------------------------
+            # 2. Tentukan konfigurasi efektif.
+            #
+            # Flag manual selalu memiliki prioritas lebih tinggi
+            # daripada nilai profile.
+            # ---------------------------------------------------------
+            effective_timeout = (
+                args.timeout
+                if args.timeout is not None
+                else profile.timeout
+                if profile is not None
+                else 2.0
+            )
+
+            effective_workers = (
+                args.workers
+                if args.workers is not None
+                else profile.workers
+                if profile is not None
+                else 1
+            )
+
+            # ---------------------------------------------------------
+            # 3. Validasi timeout dan workers
+            # ---------------------------------------------------------
+            if effective_timeout <= 0:
+                raise ValueError("Nilai --timeout harus lebih besar dari 0.")
+
+            if not (1 <= effective_workers <= 100):
+                raise ValueError(
+                    "Nilai --workers harus berada di antara 1 hingga 100."
+                )
+
+            # ---------------------------------------------------------
+            # 4. Validasi target
+            # ---------------------------------------------------------
             target_info = validate_target(args.target)
 
-            # 2. Validasi input port sebelum melakukan koneksi jaringan
+            # ---------------------------------------------------------
+            # 5. Tentukan port scanning.
+            #
+            # Prioritas:
+            # --ports / -p manual
+            #        ↓
+            # profile
+            #        ↓
+            # default
+            # ---------------------------------------------------------
             if args.ports is not None:
                 port_list = parse_ports(args.ports)
                 mode = "multi-port"
+
+            elif profile is not None:
+                port_list = parse_ports(profile.ports)
+                mode = "multi-port"
+
             else:
                 if not (1 <= args.port <= 65535):
                     raise ValueError(
@@ -182,35 +230,41 @@ def main() -> None:
                 port_list = [args.port]
                 mode = "single-port"
 
-            # 3. Resolusi DNS ke IPv4 (Phase 2)
+            # ---------------------------------------------------------
+            # 6. Resolusi DNS
+            # ---------------------------------------------------------
             resolved_ip = resolve_target(target_info.raw_target)
 
-            # 4. Tampilkan header sesi recon (Phase 5)
+            # ---------------------------------------------------------
+            # 7. Header report
+            # ---------------------------------------------------------
             print_recon_header(
                 target=target_info.raw_target,
                 target_type=target_info.target_type,
                 resolved_ip=resolved_ip,
                 port_count=len(port_list),
                 service_probe=args.service_probe,
-                timeout=args.timeout,
+                timeout=effective_timeout,
             )
 
-            # 5. Jalankan scanning
+            # ---------------------------------------------------------
+            # 8. Jalankan scanning
+            # ---------------------------------------------------------
             if mode == "multi-port":
-                if args.workers == 1:
+                if effective_workers == 1:
                     scan_summary = scan_ports(
                         target=target_info.raw_target,
                         resolved_ip=resolved_ip,
                         ports=port_list,
-                        timeout=args.timeout,
+                        timeout=effective_timeout,
                     )
                 else:
                     scan_summary = scan_ports_concurrent(
                         target=target_info.raw_target,
                         resolved_ip=resolved_ip,
                         ports=port_list,
-                        timeout=args.timeout,
-                        max_workers=args.workers,
+                        timeout=effective_timeout,
+                        max_workers=effective_workers,
                     )
 
                 probe_results = scan_summary.results
@@ -220,11 +274,14 @@ def main() -> None:
                     target=target_info.raw_target,
                     resolved_ip=resolved_ip,
                     port=args.port,
-                    timeout=args.timeout,
+                    timeout=effective_timeout,
                 )
 
                 probe_results = [single_result]
 
+            # ---------------------------------------------------------
+            # 9. Bangun findings
+            # ---------------------------------------------------------
             findings: list[PortFinding] = []
 
             for res in probe_results:
@@ -233,7 +290,7 @@ def main() -> None:
                         target=target_info.raw_target,
                         resolved_ip=resolved_ip,
                         port=res.port,
-                        timeout=args.timeout,
+                        timeout=effective_timeout,
                         use_probe=args.service_probe,
                     )
                     if res.state == "OPEN"
@@ -251,23 +308,33 @@ def main() -> None:
                     )
                 )
 
-            # 6. Susun laporan terstruktur dan render ke terminal
+            # ---------------------------------------------------------
+            # 10. Susun report
+            # ---------------------------------------------------------
             report = ReconReport(
                 target=target_info.raw_target,
                 target_type=target_info.target_type,
                 resolved_ip=resolved_ip,
                 mode=mode,
                 service_probe_enabled=args.service_probe,
-                timeout=args.timeout,
+                timeout=effective_timeout,
                 findings=findings,
             )
 
             render_recon_report(report)
 
-            # 7. Ekspor laporan ke JSON
+            # ---------------------------------------------------------
+            # 11. JSON export
+            # ---------------------------------------------------------
             if args.output is not None:
-                saved_path = save_report_to_json(report, args.output)
-                print(f"[+] JSON Report     : Tersimpan di '{saved_path}'")
+                saved_path = save_report_to_json(
+                    report,
+                    args.output,
+                )
+
+                print(
+                    f"[+] JSON Report     : Tersimpan di '{saved_path}'"
+                )
 
         except (ValueError, ConnectionError, OSError) as err:
             print_error(str(err))
