@@ -60,6 +60,7 @@ User Input (CLI Arguments)
 [5] utils/
     ├── output.py ──► Formats unified ReconReport & renders terminal table
     └── report.py ──► Serializes ReconReport with UTC metadata to JSON
+```
 
 ```plaintext
 dtvn/
